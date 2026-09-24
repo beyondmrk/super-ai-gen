@@ -1,0 +1,56 @@
+{
+  "_readme": [
+    "super-ai-gen manifest. Copy to <PROJECT>/Creatives/<slug>.json. Values the brand owns",
+    "(account, workspace, models_allowed, rates, product registry) come from clients.json - never here.",
+    "project.client MUST equal the --client flag and the Creatives/_preflight.json marker, or fire.py refuses.",
+    "Placeholders: any <TOKEN> in project.placeholders is replaced byte-identically in every prompt and action.",
+    "Locks: voice_lock is pasted VERBATIM into every speaking shot - one voice across independent gens.",
+    "Kinds: TH/VO speak on camera (on_camera_kinds); a dialogue line on any other kind gets locks.offscreen appended.",
+    "Refs: project.refs maps a name to a flat file; a <name>_panels folder beside it wins (charsheet.py --crop).",
+    "Naming: prefixed_takes -> Elements/Clips/<prefix>_<tag>_vNN.mp4 (regen = next vN in place)."
+  ],
+  "project": {
+    "client": "<key in clients.json>",
+    "slug": "<slug>",
+    "title": "<Client> - <Ad Title>",
+    "root": "D:/Claude/<CLIENT_ROOT>/<MM.DD.YY - Ad Title>",
+    "prefix": "<CLIENT>_<slug>",
+    "script_source": "Creatives/<script file>",
+    "drive_folder_id": "",
+    "takes_default": 1,
+    "naming": "prefixed_takes",
+    "on_camera_kinds": ["TH", "VO"],
+    "models": {
+      "still": "nano_banana_flash",
+      "still_resolution": "2k",
+      "motion": "kling3_0",
+      "motion_mode": "std",
+      "aspect_ratio": "9:16"
+    },
+    "refs": {
+      "CHAR_X": "Elements/Stills/_anchors/CHAR_X_sheet.png",
+      "PRODUCT": "D:/Claude/_REGISTRY/<client>/product/<product>_sheet.png"
+    },
+    "placeholders": {
+      "<PRODUCT>": "<the verbatim product lock paragraph>"
+    },
+    "locks": {
+      "voice_lock": "<who they sound like: age, region, energy, then the capture: dry, close, minimal room>",
+      "persona": "<the recurring subject, one sentence>",
+      "style_base": "<the register, one sentence>",
+      "negative_base": "text, watermark, logo, extra fingers, morphing",
+      "offscreen": "IMPORTANT: the dialogue is voice-over narration from an unseen narrator. NOBODY visible in this shot speaks.",
+      "notext": "Absolutely no text anywhere in frame.",
+      "lens": {"_default": "phone camera, flat, no cinematic bokeh"},
+      "motion_style": {"_default": "authentic phone footage, photoreal, no colour grading"}
+    }
+  },
+  "stills": [
+    {"tag": "S01", "prompt": "<what the camera sees> <PRODUCT>", "refs": ["CHAR_X", "PRODUCT@three_quarter"]}
+  ],
+  "shots": [
+    {"tag": "S01", "kind": "TH", "duration": 5, "seed": "S01", "end_seed": "",
+     "action": "the camera pushes in slowly as she talks to the phone",
+     "dialogue": "<the spoken line, lowercase-natural, no ALL-CAPS>", "model": "", "takes": 1}
+  ]
+}

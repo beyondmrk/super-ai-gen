@@ -1,0 +1,28 @@
+{
+ "_readme": [
+  "Copy to clients.json (git-ignored) and fill one entry per CLIENT. This file is the ONLY place a brand is defined.",
+  "engine: higgsfield-cli is the only engine this skill fires. account = the email `higgsfield account status` must print.",
+  "workspace_id / workspace_name: what `higgsfield workspace list` must show as selected (check mark) before any spend.",
+  "models_allowed: the models this client may be fired on. prefire.py asks the editor to pick ONE image + ONE video from it.",
+  "rates (optional): measured credit prices that override fire.py's table: {\"veo3_1_lite\": {\"off\": 1.0, \"on\": 1.5}, \"gpt_image_2\": {\"2k\": 6.5}}.",
+  "fire_lints (optional): path to a module with lint(stage, manifest, stills, shots) -> (errs, warns) - the brand's craft checks.",
+  "drive_root_id (optional): the client's delivery root on Drive; prefire still needs a per-project --drive link.",
+  "product_registry (optional): the standing folder product reference sheets come from - never generated."
+ ],
+ "acme": {
+  "skill": "super-ai-gen",
+  "engine": "higgsfield-cli",
+  "account": "editor@acme.example",
+  "workspace_id": "00000000-0000-0000-0000-000000000000",
+  "workspace_name": "ACME",
+  "models_allowed": ["nano_banana_flash", "gpt_image_2", "kling3_0", "seedance_2_5", "veo3_1_lite"],
+  "models_note": "which lanes are doctrine for this brand and why",
+  "rates": {"veo3_1_lite": {"off": 1.0, "on": 1.5}},
+  "local_root": "D:/Ads/ACME",
+  "drive_root_id": "",
+  "brand_doc": "",
+  "brand_rules": ["no competitor names", "product only from the registry"],
+  "product_registry": "D:/Ads/_REGISTRY/acme/product",
+  "qa_profile": "broll"
+ }
+}

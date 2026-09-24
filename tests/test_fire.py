@@ -130,6 +130,37 @@ def test_dry_run_motion_uses_client_rate_override(project, capsys):
     assert "->  15.0 cr" in capsys.readouterr().out
 
 
+def test_dry_run_names_the_rate_source(project, capsys):
+    marker(project, "acme")
+    m = manifest(str(project), motion="veo3_1_lite")
+    for s in m["shots"]:
+        s["duration"] = 6
+    assert run(["--manifest", write_manifest(project, m), "--stage", "motion", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "rate source" in out and "veo3_1_lite: clients.json override" in out
+    assert "UNVERIFIED" not in out          # the stubbed probe answered
+
+
+def test_dry_run_marks_total_unverified_when_probe_fails(project, capsys, monkeypatch):
+    marker(project, "acme")
+    m = manifest(str(project))
+
+    def dead_probe(cmd, *a, **k):
+        if len(cmd) > 2 and cmd[1:3] == ["generate", "cost"]:
+            raise OSError("cli unreachable")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(fire.subprocess, "run", dead_probe)
+    assert run(["--manifest", write_manifest(project, m), "--stage", "stills", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "nano_banana_flash: fire.py table (" in out and "measured" in out
+    assert "UNVERIFIED" in out and "DRY RUN" in out
+
+
+def test_hf_binary_is_never_none(monkeypatch):
+    monkeypatch.setattr(fire.shutil, "which", lambda *_: None)
+    assert isinstance(fire._hf_bin(), str) and fire._hf_bin()
+
+
 def test_veo_grid_and_kling_range_lints(project, capsys):
     marker(project, "acme")
     m = manifest(str(project), motion="veo3_1_lite")

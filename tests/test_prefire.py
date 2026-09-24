@@ -124,6 +124,23 @@ def test_wrong_workspace_is_flagged(env, capsys):
     assert "workspace set ws-acme" in capsys.readouterr().out
 
 
+def test_workspace_name_prefix_is_not_a_match(env, capsys):
+    """"ACME" must not pass on a selected line for "ACME Archive" - the recorded id decides."""
+    project, fake, _ = env
+    fake.ws = "\u2713 ACME Archive ws-archive"
+    assert prefire.main(base(project)) == 2
+    assert "workspace set ws-acme" in capsys.readouterr().out
+
+
+def test_workspace_id_matches_as_a_whole_token_only():
+    assert prefire.workspace_selected("\u2713 ACME ws-acme", "ws-acme", "ACME")
+    assert prefire.workspace_selected("* ACME (ws-acme)", "ws-acme", "ACME")
+    assert not prefire.workspace_selected("\u2713 ACME ws-acme2", "ws-acme", "ACME")
+    # no id recorded: the name matches as whole words, never as a prefix
+    assert prefire.workspace_selected("\u2713 ACME", "", "ACME")
+    assert not prefire.workspace_selected("\u2713 ACMECORP", "", "ACME")
+
+
 def test_missing_models_prints_the_ask(env, capsys):
     project, _, _ = env
     argv = ["--client", "acme", "--project", str(project), "--drive", LINK]

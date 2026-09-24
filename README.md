@@ -22,6 +22,21 @@ Everything the skill needs is in this folder. It has no dependency on any other 
 - [Higgsfield CLI](https://www.npmjs.com/package/@higgsfield/cli): `npm i -g @higgsfield/cli`, then `higgsfield auth login`
 - [rclone](https://rclone.org/) with a Google Drive remote named `gdrive` (`rclone config`), or pass `--rclone-remote <name>`
 
+## Platform
+
+The scripts are standard-library Python and run anywhere, but they were built on Windows and a few
+defaults show it:
+
+- Binary lookup is `PATH` first on every platform. Only on Windows do the scripts also search the npm
+  global folder for `higgsfield` and the WinGet packages folder for `rclone`. On macOS or Linux, both
+  tools must be on `PATH`.
+- The example registry and manifest template use `D:/...` roots. Any absolute path works; forward
+  slashes are fine on Windows.
+- Output paths are joined with `os.path`, so a manifest written on one platform fires unchanged on
+  another as long as the roots exist there.
+
+The tests pass on Linux and Windows without changes.
+
 ## Install as a Claude Code skill
 
 ```bash
@@ -49,6 +64,13 @@ python fire.py --manifest "<project>/Creatives/<slug>.json" --stage motion
 ```
 
 `python fire.py --models acme` prints a client's allowed models with rates and duration rules, which is what you put in front of the editor for the model choice.
+
+### Reading the dry-run cost
+
+The credit total is arithmetic on hand-measured rates, not a quote. Every dry-run prints where each
+model's rate came from (a `clients.json` override, or the `fire.py` table with the date it was
+measured) and then runs one free `generate cost` probe with the real parameters. If the probe returns
+nothing, the dry-run prints `UNVERIFIED`: treat the total as stale until the probe answers.
 
 ## What stops a fire
 

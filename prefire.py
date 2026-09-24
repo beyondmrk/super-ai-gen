@@ -83,11 +83,12 @@ def hf_bin():
     p = shutil.which("higgsfield") or shutil.which("higgsfield.cmd")
     if p:
         return p
-    for cand in (os.path.expandvars(r"%APPDATA%\npm\higgsfield.cmd"),
-                 os.path.expandvars(r"%LOCALAPPDATA%\npm\higgsfield.cmd"),
-                 os.path.expandvars(r"%APPDATA%\npm\node_modules\@higgsfield\cli\vendor\hf.exe")):
-        if os.path.exists(cand):
-            return cand
+    if sys.platform == "win32":
+        for cand in (os.path.expandvars(r"%APPDATA%\npm\higgsfield.cmd"),
+                     os.path.expandvars(r"%LOCALAPPDATA%\npm\higgsfield.cmd"),
+                     os.path.expandvars(r"%APPDATA%\npm\node_modules\@higgsfield\cli\vendor\hf.exe")):
+            if os.path.exists(cand):
+                return cand
     return None
 
 
@@ -95,6 +96,8 @@ def rclone_bin():
     p = shutil.which("rclone")
     if p:
         return p
+    if sys.platform != "win32":
+        return None
     base = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages")
     for root, _d, files in os.walk(base) if os.path.isdir(base) else []:
         if "rclone.exe" in files:
@@ -224,11 +227,25 @@ def check_account(client, g):
     if not (ws_id or ws_name):
         g.note("2. workspace", "no workspace recorded in clients.json - selected: %s" % (sel.strip() or "?"))
         return
-    if (ws_id and ws_id in sel) or (ws_name and ws_name.lower() in sel.lower()):
+    if workspace_selected(sel, ws_id, ws_name):
         g.ok("2. workspace", ws_name or ws_id)
     else:
         g.flag("2. workspace", "%s (%s) is not the selected workspace - `higgsfield workspace set %s`, then re-run"
                % (ws_name or "-", ws_id or "-", ws_id or ws_name))
+
+
+def workspace_selected(sel, ws_id, ws_name):
+    """Is the CLI's selected-workspace line the client's workspace?
+
+    The id decides whenever clients.json has one: it must appear as a whole token. A recorded
+    id that is absent is a miss even if the name appears - "ACME" must not pass on a line for
+    "ACME Archive". Only a client with no id falls back to the name, matched as whole words."""
+    tokens = {t.strip("()[]{},;:*\u2713").lower() for t in (sel or "").split()}
+    if ws_id:
+        return ws_id.lower() in tokens
+    if ws_name:
+        return re.search(r"(?<!\w)%s(?!\w)" % re.escape(ws_name), sel or "", re.IGNORECASE) is not None
+    return False
 
 
 # ---------------------------------------------------------------- 3. models

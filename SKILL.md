@@ -52,7 +52,7 @@ Output layout is the spine's: `Elements/Stills/<tag>.png`, `Elements/Clips/<pref
 python -m pytest ~/.claude/skills/super-ai-gen/tests -q
 ```
 
-27 tests across fire.py and prefire.py: every refusal path above, the three prefire checks (Drive edit permission, CLI account and workspace, model choice), the cost math with a client rate override, the model duration lints, regen-in-place, the pestlab loader, and the per-model command shapes. The stub fails any test that reaches a `generate create`.
+32 tests across fire.py and prefire.py: every refusal path above, the three prefire checks (Drive edit permission, CLI account and workspace, model choice), the cost math with a client rate override, the model duration lints, regen-in-place, the pestlab loader, and the per-model command shapes. The stub fails any test that reaches a `generate create`.
 
 ## Packaging (GitHub)
 

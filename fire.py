@@ -50,8 +50,21 @@ try:
 except Exception:
     pass
 
-HF = shutil.which("higgsfield") or os.path.expandvars(
-    r"%APPDATA%\npm\node_modules\@higgsfield\cli\vendor\hf.exe")
+def _hf_bin():
+    """The Higgsfield CLI: PATH first, the npm global install on Windows second, and the bare
+    name last so a missing CLI fails with a clear "not found" instead of a None in argv."""
+    p = shutil.which("higgsfield") or shutil.which("higgsfield.cmd")
+    if p:
+        return p
+    if sys.platform == "win32":
+        for cand in (os.path.expandvars(r"%APPDATA%\npm\higgsfield.cmd"),
+                     os.path.expandvars(r"%APPDATA%\npm\node_modules\@higgsfield\cli\vendor\hf.exe")):
+            if os.path.isfile(cand):
+                return cand
+    return "higgsfield"
+
+
+HF = _hf_bin()
 # The registry: env override, then this folder's clients.json (the packaged install), then the
 # BLC spine's copy when this skill sits beside asset-qc-local. clients.example.json is the template.
 CLIENTS_PATH = (os.environ.get("SUPER_AI_GEN_CLIENTS")
@@ -236,6 +249,17 @@ def still_cost(client, model, res):
     if isinstance(ov, dict) and res in ov:
         return float(ov[res])
     return STILL_MODELS.get(model, {}).get("cost", {}).get(res)
+
+
+def rate_source(client, model):
+    """Where the number the dry-run prints came from, in one line: the client's override in
+    clients.json, or this script's hand-measured table with the date in its note. Both are
+    stale the day a price moves; the live probe is the only current number."""
+    ov = (client.get("rates") or {}).get(model)
+    if isinstance(ov, dict) and ov:
+        return "%s: clients.json override %s" % (model, json.dumps(ov, sort_keys=True))
+    spec = STILL_MODELS.get(model) or MOTION_MODELS.get(model) or {}
+    return "%s: fire.py table (%s)" % (model, spec.get("note") or "never measured, undated")
 
 
 # ---------------------------------------------------------------- inputs -> one model
@@ -797,6 +821,10 @@ def plan(m, stage, stills, shots, takes, from_take, reroll):
     return todo
 
 
+def todo_shots(todo):
+    return [s for s, _take, _p in todo]
+
+
 def cost(m, client, stage, todo):
     total, unknown = 0.0, []
     P = m["project"]
@@ -918,13 +946,22 @@ def main(argv=None):
                 print("  %-16s v%02d %-6s %2ss %-22s sound=%s seed=%s%s" % (
                     s["tag"], take, s.get("kind", "TH"), s["duration"], model_for(m, s), sound_for(s),
                     s.get("seed") or "t2v", " end=" + s["end_seed"] if s.get("end_seed") else ""))
+        models_used = sorted({P["models"]["still"]} if a.stage == "stills" else {model_for(m, s) for s in todo_shots(todo)})
+        print("\nrate source (the %.1f cr above is arithmetic on these, not a quote):" % total)
+        for mdl in models_used:
+            print("  " + rate_source(client, mdl))
         if todo:
             s = todo[0][0]
+            probe = None
             try:
                 cmd = still_cmd(m, s) if a.stage == "stills" else motion_cmd(m, s)
-                print("\nlive rate probe (%s): %s" % (s["tag"], live_cost_probe(cmd)))
+                probe = live_cost_probe(cmd)
+                print("\nlive rate probe (%s): %s" % (s["tag"], probe))
             except Exception as e:
                 print("\nlive rate probe failed: %r" % e)
+            if not probe or probe.strip() in ("", "?"):
+                print("UNVERIFIED: the probe returned nothing, so the %.1f cr total rests on the table/override "
+                      "dates above and may be stale. Re-run with the CLI reachable before a real fire." % total)
         print("\nDRY RUN - nothing fired.")
         return 0
 

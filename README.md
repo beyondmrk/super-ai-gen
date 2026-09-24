@@ -37,11 +37,31 @@ defaults show it:
 
 The tests pass on Linux and Windows without changes.
 
+## Keeping secrets local
+
+Nothing you sign into is stored in this repo, and the repo is set up so it cannot be committed by accident:
+
+| Secret | Where it lives | Reaches git? |
+|---|---|---|
+| Higgsfield login token | the CLI's own config folder (`higgsfield auth login`) | never read by these scripts |
+| Google Drive OAuth token | rclone's config file (`rclone config`) | never read by these scripts |
+| Account emails, workspace ids, rates | `clients.json` | ignored: `clients*.json` except the example |
+| Drive folder id, prompts, result URLs | `Creatives/_preflight.json`, `_gen_run.json` | ignored, along with `Creatives/` and `Elements/` |
+
+Two guards enforce it. `tests/test_no_secrets_tracked.py` fails the suite if any of those files is tracked or any tracked file holds an email, uuid, Drive folder id or token that is not a documented placeholder. `hooks/pre-commit` applies the same rules before a commit exists. Install it once per clone:
+
+```bash
+git config core.hooksPath hooks
+```
+
+Two habits finish the job: never `git add -f` (forcing is the only way past the ignore list), and blank any token line before pasting CLI output anywhere. Emails on their own are fine to paste.
+
 ## Install as a Claude Code skill
 
 ```bash
 git clone <this repo> ~/.claude/skills/super-ai-gen
 cp ~/.claude/skills/super-ai-gen/clients.example.json ~/.claude/skills/super-ai-gen/clients.json
+git -C ~/.claude/skills/super-ai-gen config core.hooksPath hooks
 ```
 
 Fill `clients.json`: the account email, the workspace, and the models each client may run on. Project-level installs work the same under `<repo>/.claude/skills/super-ai-gen`.

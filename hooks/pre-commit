@@ -1,0 +1,28 @@
+#!/bin/sh
+# super-ai-gen pre-commit: nothing that names a real account, workspace, Drive folder or token
+# gets committed. Install once per clone:  git config core.hooksPath hooks
+# Same rules as tests/test_no_secrets_tracked.py, run before the commit exists.
+fail=0
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+for f in $staged; do
+  case "$f" in
+    clients.example.json) ;;
+    clients*.json|*/clients*.json|*_preflight.json|*_gen_run.json|Creatives/*|*/Creatives/*|Elements/*|*/Elements/*)
+      echo "pre-commit: REFUSED - $f holds account/workspace/project data and must stay local"
+      echo "            fix: git restore --staged \"$f\"   (placeholders belong in clients.example.json)"
+      fail=1 ;;
+  esac
+done
+# secret-shaped content in the added lines: real emails, non-zero uuids, Drive folder ids, tokens
+pat='[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/folders/[A-Za-z0-9_-]{20,}|[Bb]earer [A-Za-z0-9._-]{16,}|hf_[A-Za-z0-9]{20,}'
+hits=$(git diff --cached -U0 --diff-filter=ACMR -- . ':!clients.example.json' \
+  | grep -E '^\+[^+]' \
+  | grep -E "$pat" \
+  | grep -Ev '@([A-Za-z0-9-]+\.)*(example|example\.com|anthropic\.com)\b|00000000-0000-0000-0000-000000000000|noreply@')
+if [ -n "$hits" ]; then
+  echo "pre-commit: REFUSED - staged lines look like an email, workspace id, Drive folder id or token:"
+  echo "$hits" | head -20 | sed 's/^/    /'
+  echo "            fix: move real values to clients.json (ignored) and keep placeholders in the repo"
+  fail=1
+fi
+exit $fail

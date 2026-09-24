@@ -112,7 +112,7 @@ def test_cli_not_installed_is_flagged(env, capsys):
 
 def test_wrong_account_is_flagged(env, capsys):
     project, fake, _ = env
-    fake.email = "someone@else.com"
+    fake.email = "someone@else.example"
     assert prefire.main(base(project)) == 2
     assert "STOP" in capsys.readouterr().out
 

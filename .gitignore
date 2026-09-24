@@ -1,4 +1,16 @@
-clients.json
+# the brand registry: real emails + workspace ids. Only the example ships.
+clients*.json
+!clients.example.json
+# project artefacts if a project is ever run inside this folder
+Creatives/
+Elements/
+_preflight.json
+_gen_run.json
+_fire_*.lock
+# local env / logs
+.env
+.env.*
+*.log
 __pycache__/
 *.pyc
 .pytest_cache/

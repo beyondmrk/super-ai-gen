@@ -56,7 +56,7 @@ python -m pytest ~/.claude/skills/super-ai-gen/tests -q
 
 ## Packaging (GitHub)
 
-This folder is self-contained: `prefire.py`, `fire.py`, `panels.py`, `clients.example.json`, `manifest_template.json`, `tests/`, `README.md`. The real `clients.json` is git-ignored (accounts and workspace ids). Requirements are the Higgsfield CLI, rclone with a Google Drive remote, Python 3.10+. Install = clone into `~/.claude/skills/super-ai-gen` and copy the example registry; `README.md` has the full run.
+This folder is self-contained: `prefire.py`, `fire.py`, `panels.py`, `clients.example.json`, `manifest_template.json`, `tests/`, `README.md`. `clients*.json` (except the example) and every project artefact (`Creatives/`, `Elements/`, `_preflight.json`, `_gen_run.json`) are git-ignored; `tests/test_no_secrets_tracked.py` and `hooks/pre-commit` (`git config core.hooksPath hooks`) enforce it. Requirements are the Higgsfield CLI, rclone with a Google Drive remote, Python 3.10+. Install = clone into `~/.claude/skills/super-ai-gen` and copy the example registry; `README.md` has the full run.
 
 ## Common mistakes
 

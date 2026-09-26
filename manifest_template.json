@@ -7,6 +7,7 @@
     "Locks: voice_lock is pasted VERBATIM into every speaking shot - one voice across independent gens.",
     "Kinds: TH/VO speak on camera (on_camera_kinds); a dialogue line on any other kind gets locks.offscreen appended.",
     "Refs: project.refs maps a name to a flat file; a <name>_panels folder beside it wins (charsheet.py --crop).",
+    "Cast lock: a character entity on camera in 2+ shots declares master (a still tag) + voice ({vo: <VO file>} or {lock: <name>}); castlock.py refuses motion otherwise.",
     "Naming: prefixed_takes -> Elements/Clips/<prefix>_<tag>_vNN.mp4 (regen = next vN in place)."
   ],
   "project": {

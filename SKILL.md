@@ -44,7 +44,7 @@ Output layout is the spine's: `Elements/Stills/<tag>.png`, `Elements/Clips/<pref
 
 ## Manifest shape
 
-`manifest_template.json` is the contract. `project.locks.voice_lock` is pasted verbatim into every speaking shot. `project.placeholders` tokens are replaced byte-identically in every prompt. `project.refs` maps a ref name to a flat file; a `<name>_panels` folder beside it wins (spine step 4). Legacy manifests (locks at project level, `<PRODUCT>`-style tokens) load unchanged.
+`manifest_template.json` is the contract. **Cast lock:** a character entity on camera in 2+ shots declares `master` (the Gate-2 still every on-camera shot starts from) + `voice` (`{"vo": <VO file>}` → lines fire on `wan2_7` with `audio_file`, or `{"lock": <name>}`); `castlock.py` refuses the motion stage otherwise. Spine doctrine: `asset-qc-local/PIPELINE.md` §4. `project.locks.voice_lock` is pasted verbatim into every speaking shot. `project.placeholders` tokens are replaced byte-identically in every prompt. `project.refs` maps a ref name to a flat file; a `<name>_panels` folder beside it wins (spine step 4). Legacy manifests (locks at project level, `<PRODUCT>`-style tokens) load unchanged.
 
 ## Verification
 

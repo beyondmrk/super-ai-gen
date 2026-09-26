@@ -44,6 +44,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 QC = os.path.join(os.path.dirname(HERE), "asset-qc-local")   # the BLC spine, when this skill sits beside it
 sys.path.insert(0, HERE)
 from panels import expand as panel_expand, split_angle  # noqa: E402  (vendored copy in this folder)
+import castlock  # noqa: E402  (vendored copy; canonical in asset-qc-local/castlock.py)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -724,6 +725,12 @@ def preflight(m, client, stage, stills, shots, dry):
                         warns.append("%s ALL-CAPS word %r will be spelled out letter by letter" % (tag, w))
                 if not voice_lock_for(L, s):
                     errs.append("%s carries dialogue but no voice lock resolves (project.locks.voice_lock / voices)" % tag)
+    # cast lock (2026-09-26): one master still + one voice per on-camera character - see castlock.py
+    if stage == "motion":
+        e2, w2 = castlock.lint(P.get("entities"), shots, m.get("stills", []), P.get("on_camera_kinds"),
+                               lambda s: MOTION_MODELS.get(model_for(m, s), {}).get("audio"))
+        errs += e2
+        warns += w2
     # client-owned craft lints, if the registry names a module: def lint(stage, m, stills, shots) -> (errs, warns)
     hook = client.get("fire_lints")
     if hook:

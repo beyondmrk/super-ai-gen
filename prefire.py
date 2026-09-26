@@ -67,13 +67,15 @@ def run(cmd, timeout=120):
 
 
 def jload(out):
-    """rclone can prefix NOTICE lines and a BOM; parse from the first bracket."""
+    """rclone can prefix NOTICE lines and a BOM, and run() appends stderr AFTER stdout, so a NOTICE
+    can also trail the JSON (the 2026 client_id retirement notice does). Parse from the first
+    bracket and ignore whatever follows the value."""
     t = (out or "").lstrip("\ufeff")
     i = min([x for x in (t.find("["), t.find("{")) if x >= 0], default=-1)
     if i < 0:
         return []
     try:
-        return json.loads(t[i:])
+        return json.JSONDecoder().raw_decode(t[i:])[0]
     except Exception:
         return []
 
@@ -232,8 +234,10 @@ def check_account(client, g):
 
 
 # ---------------------------------------------------------------- 3. models
-def check_models(client, key, models, g):
-    """Exactly one image + one video model, both allowed. Missing -> print the ask, FLAG."""
+def check_models(client, key, models, g, sheet=None):
+    """Exactly one image + one video model, both allowed. Missing -> print the ask, FLAG.
+    Optional third: a SHEET model (--sheet-model), an image model used only by stills that
+    carry their own \"model\" (character / product sheets). Recorded after the pair."""
     allowed = [m.lower() for m in client.get("models_allowed", [])]
     given = [m.strip().lower() for m in (models or []) if m.strip()]
     images = [m for m in given if m in fire.STILL_MODELS]
@@ -249,9 +253,19 @@ def check_models(client, key, models, g):
         g.flag("3. models", "ASK the editor: choose exactly ONE image model and ONE video model (got image=%s video=%s). "
                "Pass them as --model <image> --model <video>. The menu is printed below." % (images or "-", videos or "-"))
         return None
+    sheet = (sheet or "").strip().lower() or None
+    if sheet and sheet not in fire.STILL_MODELS:
+        g.flag("3. models", "--sheet-model %s is not an image model this skill drives (%s)"
+               % (sheet, ", ".join(fire.STILL_MODELS)))
+        return None
+    if sheet and allowed and sheet not in allowed:
+        g.flag("3. models", "--sheet-model %s not in %s's models_allowed %s - edit clients.json, not the run"
+               % (sheet, key, allowed))
+        return None
     if not (unknown or bad):
-        g.ok("3. models", "image %s · video %s (the editor's choice, recorded in the marker)" % (images[0], videos[0]))
-    return [images[0], videos[0]]
+        g.ok("3. models", "image %s · video %s%s (the editor's choice, recorded in the marker)"
+             % (images[0], videos[0], " · sheets %s" % sheet if sheet else ""))
+    return [images[0], videos[0]] + ([sheet] if sheet else [])
 
 
 # ---------------------------------------------------------------- main
@@ -261,6 +275,11 @@ def main(argv=None):
     ap.add_argument("--project", required=True, help="local project folder (created if missing)")
     ap.add_argument("--drive", default=None, help="Google Drive folder LINK (or id) with EDIT permission")
     ap.add_argument("--model", action="append", default=[], help="repeat: one image model, one video model")
+    ap.add_argument("--also-model", action="append", default=[],
+                    help="repeat: an extra model used only by shots/stills that carry their own \"model\" "
+                         "(e.g. an audio-driven lip-sync motion model beside the main video model)")
+    ap.add_argument("--sheet-model", default=None,
+                    help="optional: a second IMAGE model for character/product sheets only (stills that carry \"model\")")
     ap.add_argument("--script", default=None, help="script / brief to copy into Creatives/ (local + Drive)")
     ap.add_argument("--rclone-remote", default="gdrive")
     a = ap.parse_args(argv)
@@ -277,7 +296,18 @@ def main(argv=None):
     scaffold_local(project, a.script, g)
     fid = check_drive(a.drive, a.rclone_remote, project, a.script, g)
     check_account(client, g)
-    chosen = check_models(client, key, a.model, g)
+    chosen = check_models(client, key, a.model, g, a.sheet_model)
+    if chosen is not None:
+        allowed = [m.lower() for m in client.get("models_allowed", [])]
+        for extra in (x.strip().lower() for x in a.also_model if x.strip()):
+            if extra not in fire.STILL_MODELS and extra not in fire.MOTION_MODELS:
+                g.flag("3. models", "--also-model %s is not a model this skill drives" % extra); chosen = None; break
+            if allowed and extra not in allowed:
+                g.flag("3. models", "--also-model %s not in %s's models_allowed - edit clients.json, not the run" % (extra, key))
+                chosen = None; break
+            if extra not in chosen:
+                chosen.append(extra)
+                g.ok("3. models", "also %s (per-shot model, the editor's choice)" % extra)
 
     print("\nPREFIRE GATE  ·  client %s  ·  %s" % (key, project))
     print("-" * 78)
@@ -290,7 +320,8 @@ def main(argv=None):
         fire.print_models(key, reg)
 
     rec = {"when": datetime.datetime.now().isoformat(timespec="seconds"), "client": key, "project": project,
-           "models": chosen or [], "drive_folder_id": fid, "open": not g.flagged,
+           "models": chosen or [], "sheet_model": (chosen[2] if chosen and len(chosen) > 2 else None),
+           "drive_folder_id": fid, "open": not g.flagged,
            "rows": [{"status": s, "item": i, "detail": d} for s, i, d in g.rows]}
     os.makedirs(os.path.join(project, "Creatives"), exist_ok=True)
     with open(os.path.join(project, "Creatives", "_preflight.json"), "w", encoding="utf-8") as f:

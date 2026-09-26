@@ -37,7 +37,7 @@ Engine facts are in MODELS below. Rates are MEASURED and move; a client may over
 in clients.json ("rates": {"veo3_1_lite": {"off": 1.0, "on": 1.5}}) and the live probe on every
 dry-run is the check that catches a moved one.
 """
-import argparse, importlib.util, json, os, re, shutil, subprocess, sys, threading, time, urllib.request
+import argparse, datetime, importlib.util, json, os, re, shutil, subprocess, sys, threading, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -92,6 +92,13 @@ MOTION_MODELS = {
                      "audio": "sound", "prompt": "json",
                      "rate": {("std", "off"): 1.25, ("std", "on"): 1.75, ("pro", "off"): 1.5, ("pro", "on"): 2.0},
                      "note": "std = 720p lane; measured 2026-09-03"},
+    # Audio-DRIVEN lip-sync: the shot's "audio_file" (a line cut from the master VO) is the soundtrack and
+    # the mouth follows it - one voice across every talking head (PETLAB rev 1, 2026-09-26: the S09 A/B
+    # clip carried the VO recording itself, waveform r=1.000). 7.5 cr / 5s measured.
+    "wan2_7":       {"dur": ("range", 5, 15), "mode": None, "resolution": "720p",
+                     "audio": "track", "prompt": "prose",
+                     "rate": {("", "off"): 1.5, ("", "on"): 1.5},
+                     "note": "audio_file drives the lips; clip >= the line's length"},
 }
 STATIC_WORDS = ("holds still", "does not move", "camera is static", "static camera", "locked off",
                 "locked-off", "motionless camera", "camera holds")
@@ -438,6 +445,12 @@ def still_prompt(m, s):
     return p
 
 
+def still_model(m, s):
+    """A still's engine: its own \"model\" (a character/product sheet on the second image model
+    declared at preflight with --sheet-model) or the project's still model."""
+    return s.get("model") or m["project"]["models"]["still"]
+
+
 def model_for(m, s):
     return s.get("model") or m["project"]["models"]["motion"]
 
@@ -533,12 +546,13 @@ def motion_prompt(m, s, model):
 # ---------------------------------------------------------------- commands
 def still_cmd(m, s):
     P = m["project"]
-    model = P["models"]["still"]
+    model = still_model(m, s)
     cmd = [HF, "generate", "create", model, "--json", "--wait", "--wait-timeout", "20m",
            "--prompt", still_prompt(m, s),
            "--aspect_ratio", s.get("aspect", P["models"]["aspect_ratio"]),
            "--resolution", P["models"]["still_resolution"]]
-    q = P["models"].get("still_quality") or STILL_MODELS.get(model, {}).get("quality")
+    q = (s.get("quality") or (P["models"].get("still_quality") if model == P["models"]["still"] else None)
+         or STILL_MODELS.get(model, {}).get("quality"))
     if q:
         cmd += ["--quality", q]
     for name in s.get("refs", []):
@@ -558,9 +572,9 @@ def motion_cmd(m, s, take=1):
            "--duration", str(int(s["duration"])),
            "--aspect_ratio", P["models"]["aspect_ratio"]]
     if s.get("seed"):
-        cmd += ["--start-image", still_path(m, s["seed"])]
+        cmd += ["--start-image", still_path(m, s["seed"], int(s.get("seed_take") or 1))]
     if s.get("end_seed"):
-        cmd += ["--end-image", still_path(m, s["end_seed"])]
+        cmd += ["--end-image", still_path(m, s["end_seed"], int(s.get("end_seed_take") or 1))]
     if mode:
         cmd += ["--mode", mode]
     if spec["resolution"]:
@@ -569,7 +583,23 @@ def motion_cmd(m, s, take=1):
         cmd += ["--generate-audio", "true" if sound == "on" else "false"]
     elif spec["audio"] == "sound":
         cmd += ["--sound", sound]
+    elif spec["audio"] == "track" and s.get("audio_file"):
+        cmd += ["--audio", audio_path(m, s)]
     return cmd
+
+
+def audio_path(m, s):
+    p = s["audio_file"]
+    return p if os.path.isabs(p) else os.path.join(root(m), p)
+
+
+def audio_seconds(path):
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
+                             capture_output=True, text=True, timeout=60).stdout.strip()
+        return float(out)
+    except Exception:
+        return None
 
 
 def live_cost_probe(cmd):
@@ -622,9 +652,10 @@ def preflight(m, client, stage, stills, shots, dry):
 
     seen = set()
     if stage == "stills":
-        model_ok(P["models"]["still"], "stills")
-        if P["models"]["still"] not in STILL_MODELS:
-            errs.append("still model %s is unknown to this script" % P["models"]["still"])
+        for mdl in sorted({P["models"]["still"]} | {still_model(m, s) for s in stills}):
+            model_ok(mdl, "stills")
+            if mdl not in STILL_MODELS:
+                errs.append("still model %s is unknown to this script" % mdl)
         for s in stills:
             if s["tag"] in seen:
                 errs.append("%s duplicate tag" % s["tag"])
@@ -662,11 +693,20 @@ def preflight(m, client, stage, stills, shots, dry):
                 errs.append("%s is bounded on %s, which forces duration %s" % (tag, model, spec["bounded_forces"]))
             for key, label in (("seed", "start"), ("end_seed", "end")):
                 if s.get(key):
-                    p = still_path(m, s[key])
+                    p = still_path(m, s[key], int(s.get(key + "_take") or 1))
                     if p is None:
                         errs.append("%s %s frame %r is not a still in this manifest" % (tag, label, s[key]))
                     elif not done(p):
                         (warns if dry else errs).append("%s %s frame missing: %s" % (tag, label, p))
+            if MOTION_MODELS.get(model, {}).get("audio") == "track":
+                if not s.get("audio_file"):
+                    errs.append("%s is on %s, which lip-syncs to an audio_file - none given" % (tag, model))
+                elif not os.path.isfile(audio_path(m, s)):
+                    errs.append("%s audio_file missing: %s" % (tag, audio_path(m, s)))
+                else:
+                    secs = audio_seconds(audio_path(m, s))
+                    if secs and secs > int(s["duration"]) + 0.05:
+                        errs.append("%s audio_file is %.2fs but the clip is %ss - the line would be cut" % (tag, secs, s["duration"]))
             act = (s.get("action") or "").lower()
             has_move = any(w in act for w in MOVE_WORDS)
             if any(w in act for w in STATIC_WORDS) and not has_move:
@@ -696,6 +736,19 @@ def preflight(m, client, stage, stills, shots, dry):
             warns += list(w2)
         except Exception as e:
             errs.append("fire_lints %s failed: %r" % (hook, e))
+    # One prompt per item: job recovery claims a job BY PROMPT, so two items sharing a prompt can
+    # swap results (2026-09-25). Make every prompt shot-specific before any credit is spent.
+    seen_p = {}
+    for it in (stills if stage == "stills" else shots):
+        try:
+            pr = still_prompt(m, it) if stage == "stills" else motion_prompt(m, it, model_for(m, it))
+        except Exception:
+            continue
+        seen_p.setdefault(pr, []).append(it["tag"])
+    for pr, tags in seen_p.items():
+        if len(tags) > 1:
+            errs.append("identical prompt shared by %s - job recovery matches by prompt, so results can swap; "
+                        "make each prompt shot-specific" % ", ".join(tags))
     return errs, warns
 
 
@@ -713,21 +766,41 @@ def parse_job(stdout):
             return None
 
 
-def recover_job(want_prompt):
+# Job ids already landed as some tag's file (this run + the state file). recover_job never hands the
+# same job to two tags (2026-09-25 PETLAB Shelter Swap: 8 face-pass tags with one shared prompt all
+# "recovered" the same job and saved one shot's image under eight names).
+_CLAIMED = set()
+
+
+def claim(job_id):
+    if job_id:
+        with _print_lock:
+            _CLAIMED.add(job_id)
+
+
+def recover_job(want_prompt, since=""):
     """`--wait --json` occasionally returns [] while the job WAS created and completes later.
-    Poll the job list and claim the newest completed job whose FULL prompt matches."""
+    Claim the completed job whose FULL prompt matches, created at/after `since` (ISO UTC), not
+    already claimed by another tag. More than one such candidate = ambiguous: return None and let
+    the shot fail loudly rather than guess which input image a job belonged to."""
     for _ in range(12):
         time.sleep(45)
-        r = subprocess.run([HF, "generate", "list", "--size", "25", "--json"], capture_output=True,
+        r = subprocess.run([HF, "generate", "list", "--size", "50", "--json"], capture_output=True,
                            text=True, encoding="utf-8", errors="replace", timeout=300)
         try:
             jobs = json.loads(r.stdout[r.stdout.index("["):])
         except Exception:
             continue
-        for j in jobs:
-            if (j.get("params", {}).get("prompt", "") == want_prompt and j.get("status") == "completed"
-                    and j.get("result_url")):
-                return j
+        with _print_lock:
+            cands = [j for j in jobs
+                     if j.get("params", {}).get("prompt", "") == want_prompt and j.get("status") == "completed"
+                     and j.get("result_url") and j.get("id") not in _CLAIMED
+                     and str(j.get("created_at", "")) >= since]
+        if len(cands) == 1:
+            claim(cands[0].get("id"))
+            return cands[0]
+        if len(cands) > 1:
+            return None
     return None
 
 
@@ -737,6 +810,7 @@ def fire_one(m, state, stage, s, take, dest):
     label = s["tag"] if (stage == "stills" and take == 1) else "%s v%02d" % (s["tag"], take)
     if os.path.exists(dest):
         return "%s SKIP exists (never overwritten): %s" % (label, dest)
+    since = (datetime.datetime.utcnow() - datetime.timedelta(seconds=90)).strftime("%Y-%m-%dT%H:%M:%S")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
         job = parse_job(r.stdout or "")
@@ -745,13 +819,14 @@ def fire_one(m, state, stage, s, take, dest):
             if "nsfw" in err.lower():
                 record(m, state, stage, s["tag"], take, status="nsfw", downloaded=False)
                 return "%s NSFW-FLAG (classifier misfire - reword neutrally and re-fire)" % label
-            job = recover_job(want)
+            job = recover_job(want, since)
             if job is None:
                 record(m, state, stage, s["tag"], take, status="error", downloaded=False, err=err)
                 return "%s FAIL empty CLI response, no matching job: %s" % (label, err.replace("\n", " "))
         if job.get("status") != "completed" or not job.get("result_url"):
             record(m, state, stage, s["tag"], take, status=job.get("status"), job_id=job.get("id"), downloaded=False)
             return "%s FAIL status=%s %s" % (label, job.get("status"), (r.stderr or "")[-160:].replace("\n", " "))
+        claim(job.get("id"))
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         urllib.request.urlretrieve(job["result_url"], dest)
         record(m, state, stage, s["tag"], take, status="completed", job_id=job.get("id"),
@@ -802,7 +877,7 @@ def cost(m, client, stage, todo):
     P = m["project"]
     for s, take, _ in todo:
         if stage == "stills":
-            c = still_cost(client, P["models"]["still"], P["models"]["still_resolution"])
+            c = still_cost(client, still_model(m, s), P["models"]["still_resolution"])
             (unknown.append(s["tag"]) if c is None else None)
             total += c or 0
         else:
@@ -871,7 +946,8 @@ def main(argv=None):
     # (--model X --model Y -> _preflight.json "models"). A model this stage would fire that was
     # never declared there is refused on a real fire; a dry-run only warns, so candidate models
     # can still be costed for the ask.
-    used = {m["project"]["models"]["still"]} if a.stage == "stills" else {model_for(m, s) for s in shots}
+    used = ({m["project"]["models"]["still"]} | {still_model(m, s) for s in stills} if a.stage == "stills"
+            else {model_for(m, s) for s in shots})
     declared = models_declared(root(m))
     undeclared = sorted(x for x in used if declared is not None and x.lower() not in declared)
     if undeclared:
@@ -899,7 +975,8 @@ def main(argv=None):
     print("\nclient %s · workspace %s · %s" % (key, client.get("workspace_name", "-"), a.stage))
     if a.stage == "stills":
         print("stills: %d in manifest, %d to fire  ->  %.1f cr (%s @%s)" % (
-            len(stills), len(todo), total, P["models"]["still"], P["models"]["still_resolution"]))
+            len(stills), len(todo), total, " + ".join(sorted({still_model(m, s) for s, _t, _p in todo}) or [P["models"]["still"]]),
+            P["models"]["still_resolution"]))
     else:
         by = {}
         for s, take, _ in todo:
@@ -947,6 +1024,8 @@ def main(argv=None):
     with open(lock, "w") as f:
         f.write(str(os.getpid()))
     state = load_state(m)
+    for rec_ in state.get(a.stage, {}).values():
+        claim(rec_.get("job_id"))
     try:
         with ThreadPoolExecutor(max_workers=a.workers) as ex:
             futs = [ex.submit(fire_one, m, state, a.stage, s, take, p) for s, take, p in todo]

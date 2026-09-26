@@ -218,3 +218,88 @@ def test_command_shapes_per_model(project):
     assert cmd[cmd.index("--prompt") + 1].startswith("Follow this shot spec exactly. {")
     still = fire.still_cmd(mm, mm["stills"][0])
     assert still[3] == "nano_banana_flash" and "--quality" not in still
+
+
+def sheet_setup(project, declared):
+    reg = dict(REG)
+    reg["acme"] = dict(REG["acme"], models_allowed=REG["acme"]["models_allowed"] + ["gpt_image_2"])
+    (project.parent / "clients.json").write_text(json.dumps(reg), encoding="utf-8")
+    (project / "Creatives" / "_preflight.json").write_text(
+        json.dumps({"client": "acme", "models": declared}), encoding="utf-8")
+    m = manifest(str(project))
+    m["stills"].insert(0, {"tag": "SHEET_A", "model": "gpt_image_2", "aspect": "16:9",
+                           "prompt": "model sheet of a dog, six panels", "refs": []})
+    return m
+
+
+def test_a_still_can_carry_its_own_sheet_model(project, capsys):
+    m = sheet_setup(project, ["nano_banana_flash", "kling3_0", "gpt_image_2"])
+    mm = fire.load_manifest(write_manifest(project, m))
+    sheet, still = fire.still_cmd(mm, mm["stills"][0]), fire.still_cmd(mm, mm["stills"][1])
+    assert sheet[3] == "gpt_image_2" and sheet[sheet.index("--quality") + 1] == "high"
+    assert sheet[sheet.index("--aspect_ratio") + 1] == "16:9"
+    assert still[3] == "nano_banana_flash" and "--quality" not in still
+    assert run(["--manifest", write_manifest(project, m), "--stage", "stills", "--dry-run"]) == 0
+    assert "10.5" in capsys.readouterr().out                 # 6.5 sheet + 2 x 2.0 stills
+
+
+def test_an_undeclared_sheet_model_refuses_a_real_fire(project, capsys):
+    m = sheet_setup(project, ["nano_banana_flash", "kling3_0"])
+    assert run(["--manifest", write_manifest(project, m), "--stage", "stills", "--skip-account-check"]) == 2
+    assert "gpt_image_2 were not chosen" in capsys.readouterr().out
+
+
+def _job_list(monkeypatch, jobs):
+    monkeypatch.setattr(fire.time, "sleep", lambda s: None)
+    monkeypatch.setattr(fire.subprocess, "run",
+                        lambda *a, **k: subprocess.CompletedProcess(a[0], 0, json.dumps(jobs), ""))
+    fire._CLAIMED.clear()
+
+
+def J(i, t="2026-09-25T10:00:00Z", prompt="P"):
+    return {"id": i, "status": "completed", "result_url": "u-" + i, "created_at": t, "params": {"prompt": prompt}}
+
+
+def test_recover_job_never_hands_one_job_to_two_tags(monkeypatch):
+    _job_list(monkeypatch, [J("j1")])
+    assert fire.recover_job("P", "2026-09-25T09:59:00")["id"] == "j1"
+    assert fire.recover_job("P", "2026-09-25T09:59:00") is None        # j1 is claimed now
+
+
+def test_recover_job_refuses_ambiguous_and_stale(monkeypatch):
+    _job_list(monkeypatch, [J("j1"), J("j2")])
+    assert fire.recover_job("P", "2026-09-25T09:59:00") is None        # two candidates: never guess
+    _job_list(monkeypatch, [J("old", t="2026-09-25T08:00:00Z")])
+    assert fire.recover_job("P", "2026-09-25T09:59:00") is None        # created before this fire
+
+
+def test_identical_prompts_across_items_is_an_error(project, capsys):
+    marker(project, "acme")
+    m = manifest(str(project))
+    m["stills"][1]["prompt"] = m["stills"][0]["prompt"]
+    assert run(["--manifest", write_manifest(project, m), "--stage", "stills", "--dry-run"]) == 1
+    assert "identical prompt shared by S01, S02" in capsys.readouterr().out
+
+
+def test_seed_take_picks_the_approved_still_take(project):
+    # Gate 2 often approves a regen (S01_v03), not v01: the clip must start from THAT take.
+    m = manifest(str(project))
+    m["shots"][0]["seed_take"] = 3
+    mm = fire.load_manifest(write_manifest(project, m))
+    cmd = fire.motion_cmd(mm, mm["shots"][0], 1)
+    assert cmd[cmd.index("--start-image") + 1].endswith("S01_v03.png")
+    assert fire.motion_cmd(mm, mm["shots"][1], 1)[fire.motion_cmd(mm, mm["shots"][1], 1).index("--start-image") + 1].endswith("S02.png")
+
+
+def test_wan_lipsync_shot_carries_its_audio_and_is_linted(project, capsys):
+    reg = dict(REG); reg["acme"] = dict(REG["acme"], models_allowed=REG["acme"]["models_allowed"] + ["wan2_7"])
+    (project.parent / "clients.json").write_text(json.dumps(reg), encoding="utf-8")
+    marker(project, "acme")
+    m = manifest(str(project))
+    m["shots"][1].update(model="wan2_7", audio_file="Elements/Audio/line.wav", duration=5)
+    mm = fire.load_manifest(write_manifest(project, m))
+    cmd = fire.motion_cmd(mm, mm["shots"][1], 1)
+    assert cmd[3] == "wan2_7" and cmd[cmd.index("--audio") + 1].endswith("line.wav")
+    assert "--resolution" in cmd and "--sound" not in cmd
+    assert run(["--manifest", write_manifest(project, m), "--stage", "motion", "--dry-run"]) == 1
+    assert "audio_file missing" in capsys.readouterr().out

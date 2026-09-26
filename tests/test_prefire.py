@@ -160,3 +160,42 @@ def test_closed_gate_marker_refuses_a_real_fire(env, capsys):
     except SystemExit as e:
         rc = e.code
     assert rc == 2 and "gate is CLOSED" in capsys.readouterr().out
+
+
+def allow_gpt(project):
+    reg = {"acme": dict(REG["acme"], models_allowed=REG["acme"]["models_allowed"] + ["gpt_image_2"])}
+    (project.parent / "clients.json").write_text(json.dumps(reg), encoding="utf-8")
+
+
+def test_sheet_model_is_recorded_beside_the_pair(env, capsys):
+    project, _, _ = env
+    allow_gpt(project)
+    assert prefire.main(base(project, "--sheet-model", "gpt_image_2")) == 0
+    rec = marker(project)
+    assert rec["models"] == ["nano_banana_flash", "kling3_0", "gpt_image_2"] and rec["sheet_model"] == "gpt_image_2"
+    assert "sheets gpt_image_2" in capsys.readouterr().out
+
+
+def test_sheet_model_must_be_an_allowed_image_model(env, capsys):
+    project, _, _ = env
+    assert prefire.main(base(project, "--sheet-model", "gpt_image_2")) == 2      # not allowed for acme
+    assert "models_allowed" in capsys.readouterr().out
+    allow_gpt(project)
+    assert prefire.main(base(project, "--sheet-model", "kling3_0")) == 2
+    assert "not an image model" in capsys.readouterr().out
+
+
+def test_jload_survives_a_trailing_rclone_notice():
+    out = ('[{"Path":"Creatives","IsDir":true}]\n'
+           "2026/09/25 16:52:47 NOTICE: gdrive{BdE_9}: This remote uses rclone's shared Google Drive client_id\n")
+    assert prefire.jload(out) == [{"Path": "Creatives", "IsDir": True}]
+    assert prefire.jload("2026/09/25 NOTICE: x\n[1, 2]") == [1, 2]
+
+
+def test_also_model_is_recorded_when_allowed(env, capsys):
+    project, _, _ = env
+    reg = {"acme": dict(REG["acme"], models_allowed=REG["acme"]["models_allowed"] + ["wan2_7"])}
+    (project.parent / "clients.json").write_text(json.dumps(reg), encoding="utf-8")
+    assert prefire.main(base(project, "--also-model", "wan2_7")) == 0
+    assert marker(project)["models"] == ["nano_banana_flash", "kling3_0", "wan2_7"]
+    assert prefire.main(base(project, "--also-model", "seedance_2_5")) == 2      # not allowed for acme

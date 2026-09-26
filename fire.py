@@ -804,6 +804,14 @@ def recover_job(want_prompt, since=""):
     return None
 
 
+def seed_of(cmd):
+    """The start image a motion command fires from (basename), or None. Recorded per take so QA
+    judges v01 against the still it was fired from, not against a later reroll's still."""
+    if "--start-image" in cmd:
+        return os.path.basename(cmd[cmd.index("--start-image") + 1])
+    return None
+
+
 def fire_one(m, state, stage, s, take, dest):
     cmd = still_cmd(m, s) if stage == "stills" else motion_cmd(m, s, take)
     want = cmd[cmd.index("--prompt") + 1]
@@ -830,7 +838,8 @@ def fire_one(m, state, stage, s, take, dest):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         urllib.request.urlretrieve(job["result_url"], dest)
         record(m, state, stage, s["tag"], take, status="completed", job_id=job.get("id"),
-               file=os.path.basename(dest), downloaded=True, prompt=want, result_url=job["result_url"])
+               file=os.path.basename(dest), downloaded=True, prompt=want, result_url=job["result_url"],
+               seed=seed_of(cmd))
         return "%s OK %dKB  %s" % (label, os.path.getsize(dest) // 1024, job["result_url"])
     except Exception as e:
         record(m, state, stage, s["tag"], take, status="error", downloaded=False, err=repr(e)[:200])

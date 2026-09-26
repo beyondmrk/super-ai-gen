@@ -27,7 +27,8 @@ import argparse, datetime, json, os, re, shutil, subprocess, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import fire  # noqa: E402  - STILL_MODELS / MOTION_MODELS / print_models / registry path
+import fire  # noqa: E402
+import hf_call  # noqa: E402  (vendored; API-unreachable vs signed-out)  - STILL_MODELS / MOTION_MODELS / print_models / registry path
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -201,10 +202,14 @@ def check_account(client, g):
         g.flag("2. higgsfield cli", "not installed / not on PATH - `npm i -g @higgsfield/cli`, then `higgsfield auth login`")
         return
     rc, out = run([hf, "account", "status"], 90)
-    email = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", out or "")
-    email = email.group(0).lower() if email else None
-    if rc != 0 or not email:
-        g.flag("2. higgsfield cli", "installed but not signed in (`higgsfield auth login`): %s" % (out or "").strip()[:200])
+    status, email = hf_call.account_status(rc, out)
+    if status == "unreachable":
+        # a 5xx here is the API, not the login (2026-09-25 Pit Bull: two sheet fires were REFUSED as
+        # "not petlab's account" on an HTTP 503; the third attempt passed untouched)
+        g.flag("2. higgsfield cli", "API unreachable (%s) - retry in a minute; this is NOT an account mismatch" % email)
+        return
+    if status != "ok":
+        g.flag("2. higgsfield cli", "installed but not signed in (`higgsfield auth login`): %s" % email)
         return
     g.ok("2. higgsfield cli", "connected, signed in as %s" % email)
     want = (client.get("account") or "").lower()

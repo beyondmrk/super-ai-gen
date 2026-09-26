@@ -45,6 +45,7 @@ QC = os.path.join(os.path.dirname(HERE), "asset-qc-local")   # the BLC spine, wh
 sys.path.insert(0, HERE)
 from panels import expand as panel_expand, split_angle  # noqa: E402  (vendored copy in this folder)
 import castlock  # noqa: E402  (vendored copy; canonical in asset-qc-local/castlock.py)
+import hf_call  # noqa: E402  (vendored copy; canonical in asset-qc-local/hf_call.py)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -827,23 +828,27 @@ def fire_one(m, state, stage, s, take, dest):
         return "%s SKIP exists (never overwritten): %s" % (label, dest)
     since = (datetime.datetime.utcnow() - datetime.timedelta(seconds=90)).strftime("%Y-%m-%dT%H:%M:%S")
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=3600)
-        job = parse_job(r.stdout or "")
-        if job is None:
-            err = (r.stderr or r.stdout or "")[-300:]
-            if "nsfw" in err.lower():
-                record(m, state, stage, s["tag"], take, status="nsfw", downloaded=False)
-                return "%s NSFW-FLAG (classifier misfire - reword neutrally and re-fire)" % label
-            job = recover_job(want, since)
-            if job is None:
-                record(m, state, stage, s["tag"], take, status="error", downloaded=False, err=err)
-                return "%s FAIL empty CLI response, no matching job: %s" % (label, err.replace("\n", " "))
-        if job.get("status") != "completed" or not job.get("result_url"):
-            record(m, state, stage, s["tag"], take, status=job.get("status"), job_id=job.get("id"), downloaded=False)
-            return "%s FAIL status=%s %s" % (label, job.get("status"), (r.stderr or "")[-160:].replace("\n", " "))
+        # hf_call: an empty/transient response is looked up (same prompt, since the fire, unclaimed)
+        # BEFORE any re-fire; a 5xx re-fires with backoff; nsfw never re-fires (2026-09-26)
+        job, outcome, err = hf_call.submit(
+            cmd, HF, want, since, claimed=_CLAIMED,
+            runner=lambda c: subprocess.run(c, capture_output=True, text=True, encoding="utf-8",
+                                            errors="replace", timeout=3600),
+            log=lambda msg: say("%s %s" % (label, msg)))
+        if outcome == "nsfw":
+            record(m, state, stage, s["tag"], take, status="nsfw", downloaded=False)
+            return "%s NSFW-FLAG (classifier misfire - reword neutrally and re-fire)" % label
+        if outcome != "ok":
+            record(m, state, stage, s["tag"], take, status=(job or {}).get("status") or "error",
+                   job_id=(job or {}).get("id"), downloaded=False, err=err)
+            return "%s FAIL %s" % (label, err.replace("\n", " "))
         claim(job.get("id"))
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        urllib.request.urlretrieve(job["result_url"], dest)
+        ok, derr = hf_call.download(job["result_url"], dest)
+        if not ok:
+            # a PAID job whose file did not land: keep the id so it is recovered, never re-fired
+            record(m, state, stage, s["tag"], take, status="completed", job_id=job.get("id"),
+                   downloaded=False, err=derr, result_url=job["result_url"], prompt=want)
+            return "%s FAIL download %s - job %s is paid and complete; re-run to recover it" % (label, derr, job.get("id"))
         record(m, state, stage, s["tag"], take, status="completed", job_id=job.get("id"),
                file=os.path.basename(dest), downloaded=True, prompt=want, result_url=job["result_url"],
                seed=seed_of(cmd))

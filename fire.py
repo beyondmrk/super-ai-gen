@@ -95,7 +95,7 @@ MOTION_MODELS = {
                      "rate": {("std", "off"): 1.25, ("std", "on"): 1.75, ("pro", "off"): 1.5, ("pro", "on"): 2.0},
                      "note": "std = 720p lane; measured 2026-09-03"},
     # Audio-DRIVEN lip-sync: the shot's "audio_file" (a line cut from the master VO) is the soundtrack and
-    # the mouth follows it - one voice across every talking head (PETLAB rev 1, 2026-09-26: the S09 A/B
+    # the mouth follows it - one voice across every talking head (a client revision, 2026-09-26: the S09 A/B
     # clip carried the VO recording itself, waveform r=1.000). 7.5 cr / 5s measured.
     "wan2_7":       {"dur": ("range", 5, 15), "mode": None, "resolution": "720p",
                      "audio": "track", "prompt": "prose",
@@ -775,7 +775,7 @@ def parse_job(stdout):
 
 
 # Job ids already landed as some tag's file (this run + the state file). recover_job never hands the
-# same job to two tags (2026-09-25 PETLAB Shelter Swap: 8 face-pass tags with one shared prompt all
+# same job to two tags (2026-09-25, a client project: 8 face-pass tags with one shared prompt all
 # "recovered" the same job and saved one shot's image under eight names).
 _CLAIMED = set()
 

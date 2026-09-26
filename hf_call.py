@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """hf_call.py - the Higgsfield CLI failure handling every fire script shares.
 
-Measured on the four Petlab swaps (2026-09-25/26): dozens of "empty CLI response, no matching job"
+Measured on four client ads (2026-09-25/26): dozens of "empty CLI response, no matching job"
 (the CLI returned nothing while the job WAS created and completed later), HTTP 503s, two cut-off
 downloads (ContentTooShortError, a paid job lost), one 503 during `account status` reported as
-"the signed-in account is not petlab's". The rules this module holds:
+"the signed-in account is not the client's". The rules this module holds:
 
   * an empty response, a 5xx, a dropped connection or a DNS blip is TRANSIENT: look the job up
     (created at/after the fire, same prompt, unclaimed) before ever re-firing, then retry the

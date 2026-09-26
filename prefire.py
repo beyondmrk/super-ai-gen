@@ -204,8 +204,8 @@ def check_account(client, g):
     rc, out = run([hf, "account", "status"], 90)
     status, email = hf_call.account_status(rc, out)
     if status == "unreachable":
-        # a 5xx here is the API, not the login (2026-09-25 Pit Bull: two sheet fires were REFUSED as
-        # "not petlab's account" on an HTTP 503; the third attempt passed untouched)
+        # a 5xx here is the API, not the login (2026-09-25, a client project: two sheet fires were REFUSED as
+        # "not the client's account" on an HTTP 503; the third attempt passed untouched)
         g.flag("2. higgsfield cli", "API unreachable (%s) - retry in a minute; this is NOT an account mismatch" % email)
         return
     if status != "ok":

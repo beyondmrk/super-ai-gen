@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """castlock.py - one master still + one voice per on-camera character, enforced before motion spend.
 
-Why (Petlab, 2026-09-25/26): 7 of the 16 client notes across four ads were "not the same face and
-the same voice". Both fixes that worked were invented mid-project (two desk masters on Pit Bull,
-Wan 2.7 driven by the master VO on Shelter Rev 1). This module makes them the rule.
+Why (a client's four ads, 2026-09-25/26): 7 of the 16 review notes were "not the same face and
+the same voice". Both fixes that worked were invented mid-project (two desk masters on one ad,
+Wan 2.7 driven by the master VO on another's revision). This module makes them the rule.
 
 Manifest contract (project.entities, kind == "character"):
 

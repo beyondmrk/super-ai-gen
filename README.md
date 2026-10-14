@@ -111,6 +111,7 @@ Every refusal names its fix. Lints run before the first credit: wrong duration f
 | `clients.example.json` | registry template; copy to `clients.json` |
 | `manifest_template.json` | the per-project manifest contract |
 | `SKILL.md` | the checklist Claude Code follows when the skill is invoked |
+| `hf-accounts/` | optional Higgsfield account router: several client logins side by side, every CLI call routed by `HF_CLIENT` so nothing bills the wrong client. Windows only; see its README |
 | `tests/` | 27 tests covering every refusal path, the cost math and the command shapes |
 
 ## Tests
